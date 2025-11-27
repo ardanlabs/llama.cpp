@@ -217,13 +217,25 @@ struct gguf_context {
 };
 
 struct gguf_reader {
-    FILE * file;
+    FILE * file = nullptr;
+    const uint8_t * buffer = nullptr;
+    size_t buffer_size = 0;
+    mutable size_t buffer_pos = 0;
 
     gguf_reader(FILE * file) : file(file) {}
+    gguf_reader(const void * buffer, size_t size) : buffer((const uint8_t *)buffer), buffer_size(size) {}
 
     template <typename T>
     bool read(T & dst) const {
-        return fread(&dst, 1, sizeof(dst), file) == sizeof(dst);
+        if (file) {
+            return fread(&dst, 1, sizeof(dst), file) == sizeof(dst);
+        }
+        if (buffer_pos + sizeof(T) > buffer_size) {
+            return false;
+        }
+        memcpy(&dst, buffer + buffer_pos, sizeof(T));
+        buffer_pos += sizeof(T);
+        return true;
     }
 
     template <typename T>
@@ -278,11 +290,27 @@ struct gguf_reader {
             return false;
         }
         dst.resize(size);
-        return fread(dst.data(), 1, dst.length(), file) == dst.length();
+        if (file) {
+            return fread(dst.data(), 1, dst.length(), file) == dst.length();
+        }
+        if (buffer_pos + dst.length() > buffer_size) {
+            return false;
+        }
+        memcpy(dst.data(), buffer + buffer_pos, dst.length());
+        buffer_pos += dst.length();
+        return true;
     }
 
     bool read(void * dst, const size_t size) const {
-        return fread(dst, 1, size, file) == size;
+        if (file) {
+            return fread(dst, 1, size, file) == size;
+        }
+        if (buffer_pos + size > buffer_size) {
+            return false;
+        }
+        memcpy(dst, buffer + buffer_pos, size);
+        buffer_pos += size;
+        return true;
     }
 };
 
@@ -316,8 +344,7 @@ bool gguf_read_emplace_helper(const struct gguf_reader & gr, std::vector<struct 
     return true;
 }
 
-struct gguf_context * gguf_init_from_file_impl(FILE * file, struct gguf_init_params params) {
-    const struct gguf_reader gr(file);
+static struct gguf_context * gguf_init_from_reader_impl(const gguf_reader & gr, struct gguf_init_params params) {
     struct gguf_context * ctx = new gguf_context;
 
     bool ok = true;
@@ -610,14 +637,26 @@ struct gguf_context * gguf_init_from_file_impl(FILE * file, struct gguf_init_par
     GGML_ASSERT(int64_t(ctx->info.size()) == n_tensors);
 
     // we require the data section to be aligned, so take into account any padding
-    if (fseek(file, GGML_PAD(ftell(file), ctx->alignment), SEEK_SET) != 0) {
-        GGML_LOG_ERROR("%s: failed to seek to beginning of data section\n", __func__);
-        gguf_free(ctx);
-        return nullptr;
+    const size_t offset_curr = gr.file ? ftell(gr.file) : gr.buffer_pos;
+    const size_t offset_aligned = GGML_PAD(offset_curr, ctx->alignment);
+
+    if (gr.file) {
+        if (fseek(gr.file, offset_aligned, SEEK_SET) != 0) {
+            GGML_LOG_ERROR("%s: failed to seek to beginning of data section\n", __func__);
+            gguf_free(ctx);
+            return nullptr;
+        }
+    } else {
+        if (offset_aligned > gr.buffer_size) {
+            GGML_LOG_ERROR("%s: buffer overflow when seeking to data section\n", __func__);
+            gguf_free(ctx);
+            return nullptr;
+        }
+        gr.buffer_pos = offset_aligned;
     }
 
     // store the current file offset - this is where the data section starts
-    ctx->offset = ftell(file);
+    ctx->offset = offset_aligned;
 
     // compute the total size of the data section, taking into account the alignment
     {
@@ -728,6 +767,16 @@ struct gguf_context * gguf_init_from_file_impl(FILE * file, struct gguf_init_par
     }
 
     return ctx;
+}
+
+struct gguf_context * gguf_init_from_file_impl(FILE * file, struct gguf_init_params params) {
+    const struct gguf_reader gr(file);
+    return gguf_init_from_reader_impl(gr, params);
+}
+
+struct gguf_context * gguf_init_from_buffer(const void * buffer, size_t size, struct gguf_init_params params) {
+    const struct gguf_reader gr(buffer, size);
+    return gguf_init_from_reader_impl(gr, params);
 }
 
 struct gguf_context * gguf_init_from_file(const char * fname, struct gguf_init_params params) {
