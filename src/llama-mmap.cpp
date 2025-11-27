@@ -169,7 +169,14 @@ struct llama_file::impl {
         seek(0, SEEK_SET);
     }
 
+    impl(const void * buffer, size_t size) : buffer(buffer), size(size) {
+        fp = NULL;
+    }
+
     size_t tell() const {
+        if (buffer) {
+            return buffer_pos;
+        }
 // TODO: this ifdef is never true?
 #ifdef _WIN32
         __int64 ret = _ftelli64(fp);
@@ -184,6 +191,16 @@ struct llama_file::impl {
     }
 
     void seek(size_t offset, int whence) const {
+        if (buffer) {
+            if (whence == SEEK_SET) {
+                buffer_pos = offset;
+            } else if (whence == SEEK_CUR) {
+                buffer_pos += offset;
+            } else if (whence == SEEK_END) {
+                buffer_pos = size + offset;
+            }
+            return;
+        }
 // TODO: this ifdef is never true?
 #ifdef _WIN32
         int ret = _fseeki64(fp, (__int64) offset, whence);
@@ -197,6 +214,14 @@ struct llama_file::impl {
 
     void read_raw(void * ptr, size_t len) const {
         if (len == 0) {
+            return;
+        }
+        if (buffer) {
+            if (buffer_pos + len > size) {
+                throw std::runtime_error("unexpectedly reached end of buffer");
+            }
+            memcpy(ptr, (const char *)buffer + buffer_pos, len);
+            buffer_pos += len;
             return;
         }
         errno = 0;
@@ -219,6 +244,9 @@ struct llama_file::impl {
         if (len == 0) {
             return;
         }
+        if (buffer) {
+            throw std::runtime_error("write to buffer not supported");
+        }
         errno = 0;
         size_t ret = std::fwrite(ptr, len, 1, fp);
         if (ret != 1) {
@@ -239,13 +267,17 @@ struct llama_file::impl {
 
     FILE * fp;
     size_t size;
+    const void * buffer = nullptr;
+    mutable size_t buffer_pos = 0;
 };
 
 llama_file::llama_file(const char * fname, const char * mode) : pimpl(std::make_unique<impl>(fname, mode)) {}
+llama_file::llama_file(const void * buffer, size_t size) : pimpl(std::make_unique<impl>(buffer, size)) {}
 llama_file::~llama_file() = default;
 
 size_t llama_file::tell() const { return pimpl->tell(); }
 size_t llama_file::size() const { return pimpl->size; }
+const void * llama_file::buffer() const { return pimpl->buffer; }
 
 int llama_file::file_id() const {
 #ifdef _WIN32
@@ -272,9 +304,15 @@ void llama_file::write_u32(uint32_t val) const { pimpl->write_u32(val); }
 struct llama_mmap::impl {
 #ifdef _POSIX_MAPPED_FILES
     std::vector<std::pair<size_t, size_t>> mapped_fragments;
+    bool is_buffer = false;
 
     impl(struct llama_file * file, size_t prefetch, bool numa) {
         size = file->size();
+        if (file->buffer()) {
+            addr = const_cast<void*>(file->buffer());
+            is_buffer = true;
+            return;
+        }
         int fd = file->file_id();
         int flags = MAP_SHARED;
         if (numa) { prefetch = 0; }
@@ -319,6 +357,9 @@ struct llama_mmap::impl {
     }
 
     void unmap_fragment(size_t first, size_t last) {
+        if (is_buffer) {
+            return;
+        }
         int page_size = sysconf(_SC_PAGESIZE);
         align_range(&first, &last, page_size);
         size_t len = last - first;
@@ -355,6 +396,9 @@ struct llama_mmap::impl {
     }
 
     ~impl() {
+        if (is_buffer) {
+            return;
+        }
         for (const auto & frag : mapped_fragments) {
             if (munmap((char *) addr + frag.first, frag.second - frag.first)) {
                 LLAMA_LOG_WARN("warning: munmap failed: %s\n", strerror(errno));

@@ -14,10 +14,13 @@ using llama_mlocks = std::vector<std::unique_ptr<llama_mlock>>;
 
 struct llama_file {
     llama_file(const char * fname, const char * mode);
+    llama_file(const void * buffer, size_t size);
     ~llama_file();
 
     size_t tell() const;
     size_t size() const;
+
+    const void * buffer() const;
 
     int file_id() const; // fileno overload
 
