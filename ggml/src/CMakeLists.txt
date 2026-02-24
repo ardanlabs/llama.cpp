@@ -453,6 +453,16 @@ ggml_add_backend(HIP)
 ggml_add_backend(METAL)
 ggml_add_backend(MUSA)
 ggml_add_backend(RPC)
+# Thunderbolt-RDMA backend is macOS-only and uses a dashed directory name
+# (`ggml-tb-rdma`) rather than the underscore convention, so it can't go
+# through `ggml_add_backend()`. Mirror that helper's side-effects here.
+if (APPLE AND GGML_TB_RDMA)
+    add_subdirectory(ggml-tb-rdma)
+    message(STATUS "Including TB_RDMA backend")
+    if (NOT GGML_BACKEND_DL)
+        target_compile_definitions(ggml PUBLIC GGML_USE_TB_RDMA)
+    endif()
+endif()
 ggml_add_backend(VirtGPU)
 ggml_add_backend(SYCL)
 ggml_add_backend(Vulkan)

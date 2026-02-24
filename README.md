@@ -67,6 +67,7 @@ range of hardware - locally and in the cloud.
 - 1.5-bit, 2-bit, 3-bit, 4-bit, 5-bit, 6-bit, and 8-bit integer quantization for faster inference and reduced memory use
 - Custom CUDA kernels for running LLMs on NVIDIA GPUs (support for AMD GPUs via HIP and Moore Threads GPUs via MUSA)
 - Vulkan and SYCL backend support
+- [RPC-RDMA backend](docs/backend/Readme.md) for accelerated remote inference over RDMA (InfiniBand, RoCE, Apple Thunderbolt 5), with automatic TCP fallback
 - CPU+GPU hybrid inference to partially accelerate models larger than the total VRAM capacity
 
 The `llama.cpp` project is the main playground for developing new features for the [ggml](https://github.com/ggml-org/ggml) library.
@@ -276,25 +277,26 @@ Instructions for adding support for new models: [HOWTO-add-model.md](docs/develo
 
 ## Supported backends
 
-| Backend | Target devices |
-| --- | --- |
-| [Metal](docs/build.md#metal-build) | Apple Silicon |
-| [BLAS](docs/build.md#blas-build) | All |
-| [BLIS](docs/backend/BLIS.md) | All |
-| [SYCL](docs/backend/SYCL.md) | Intel GPU |
+| Backend                                                            | Target devices |
+|--------------------------------------------------------------------| --- |
+| [Metal](docs/build.md#metal-build)                                 | Apple Silicon |
+| [BLAS](docs/build.md#blas-build)                                   | All |
+| [BLIS](docs/backend/BLIS.md)                                       | All |
+| [SYCL](docs/backend/SYCL.md)                                       | Intel GPU |
 | [OpenVINO [In Progress]](docs/backend/OPENVINO.md) | Intel CPUs, GPUs, and NPUs |
-| [MUSA](docs/build.md#musa) | Moore Threads GPU |
-| [CUDA](docs/build.md#cuda) | Nvidia GPU |
-| [HIP](docs/build.md#hip) | AMD GPU |
-| [ZenDNN](docs/build.md#zendnn) | AMD CPU |
-| [Vulkan](docs/build.md#vulkan) | GPU |
-| [CANN](docs/build.md#cann) | Ascend NPU |
-| [OpenCL](docs/backend/OPENCL.md) | Adreno GPU |
-| [IBM zDNN](docs/backend/zDNN.md) | IBM Z & LinuxONE |
-| [WebGPU](docs/build.md#webgpu) | All |
+| [MUSA](docs/build.md#musa)                                         | Moore Threads GPU |
+| [CUDA](docs/build.md#cuda)                                         | Nvidia GPU |
+| [HIP](docs/build.md#hip)                                           | AMD GPU |
+| [ZenDNN](docs/build.md#zendnn)                                     | AMD CPU |
+| [Vulkan](docs/build.md#vulkan)                                     | GPU |
+| [CANN](docs/build.md#cann)                                         | Ascend NPU |
+| [OpenCL](docs/backend/OPENCL.md)                                   | Adreno GPU |
+| [IBM zDNN](docs/backend/zDNN.md)                                   | IBM Z & LinuxONE |
+| [WebGPU](docs/build.md#webgpu)                       | All |
 | [RPC](https://github.com/ggml-org/llama.cpp/tree/master/tools/rpc) | All |
-| [Hexagon [In Progress]](docs/backend/snapdragon/README.md) | Snapdragon |
-| [VirtGPU](docs/backend/VirtGPU.md) | VirtGPU APIR |
+| [RPC-RDMA](docs/backend/RPC-RDMA.md)                               | All |
+| [Hexagon [In Progress]](docs/backend/snapdragon/README.md)            | Snapdragon |
+| [VirtGPU](docs/backend/VirtGPU.md)                                 | VirtGPU APIR |
 
 ## Obtaining and quantizing models
 
